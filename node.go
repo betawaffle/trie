@@ -49,14 +49,14 @@ func (n *Node) Delete(k []byte) *Node {
 	if n == nil {
 		return nil
 	}
-	return n.delete(&txn{root: n}, k)
+	return n.delete(&Txn{root: n}, k)
 }
 
 func (n *Node) DeleteString(k string) *Node {
 	if n == nil {
 		return nil
 	}
-	return n.deleteString(&txn{root: n}, k)
+	return n.deleteString(&Txn{root: n}, k)
 }
 
 func (n *Node) Histogram() map[uint8]int {
@@ -79,21 +79,21 @@ func (a *Node) Merge(b *Node) *Node {
 	if b == nil {
 		return a
 	}
-	return a.merge(&txn{root: a}, b)
+	return a.merge(&Txn{root: a}, b)
 }
 
 func (n *Node) Put(k []byte, v interface{}) *Node {
 	if n == nil {
 		return &Node{key: k, value: v}
 	}
-	return n.put(&txn{root: n}, k, v, nil)
+	return n.put(&Txn{root: n}, k, v, nil)
 }
 
 func (n *Node) PutString(k string, v interface{}) *Node {
 	if n == nil {
 		return &Node{key: Key(k), value: v}
 	}
-	return n.putString(&txn{root: n}, k, v, nil)
+	return n.putString(&Txn{root: n}, k, v, nil)
 }
 
 func (n *Node) String() string {
@@ -109,7 +109,7 @@ func (n *Node) Walk(fn func(*Node) bool) {
 	}
 }
 
-func (n *Node) delete(t *txn, k []byte) *Node {
+func (n *Node) delete(t *Txn, k []byte) *Node {
 	if n.key.bytesNeedSplit(k, t) { // not found
 		return n
 	}
@@ -123,7 +123,7 @@ func (n *Node) delete(t *txn, k []byte) *Node {
 	return n.setEdges(t, es)
 }
 
-func (n *Node) deleteString(t *txn, k string) *Node {
+func (n *Node) deleteString(t *Txn, k string) *Node {
 	if n.key.stringNeedSplit(k, t) { // not found
 		return n
 	}
@@ -137,7 +137,7 @@ func (n *Node) deleteString(t *txn, k string) *Node {
 	return n.setEdges(t, es)
 }
 
-func (n *Node) deleteValue(t *txn) *Node {
+func (n *Node) deleteValue(t *Txn) *Node {
 	switch len(n.edges) {
 	case 0:
 		// t.maybeFree(n)
@@ -156,7 +156,7 @@ func (n *Node) deleteValue(t *txn) *Node {
 }
 
 // merge is like put, but takes an existing node, which can save allocations.
-func (a *Node) merge(t *txn, b *Node) *Node {
+func (a *Node) merge(t *Txn, b *Node) *Node {
 	if a.key.bytesNeedSplit(b.key, t) { // split
 		return a.split(t, b)
 	}
@@ -171,7 +171,7 @@ func (a *Node) merge(t *txn, b *Node) *Node {
 }
 
 // put sets the value (and merges the edges) under a given key.
-func (n *Node) put(t *txn, k []byte, v interface{}, es edges) *Node {
+func (n *Node) put(t *Txn, k []byte, v interface{}, es edges) *Node {
 	if n.key.bytesNeedSplit(k, t) { // split
 		return n.splitNew(t, k, v, es)
 	}
@@ -186,7 +186,7 @@ func (n *Node) put(t *txn, k []byte, v interface{}, es edges) *Node {
 }
 
 // putString is like put, but takes a string key.
-func (n *Node) putString(t *txn, k string, v interface{}, es edges) *Node {
+func (n *Node) putString(t *Txn, k string, v interface{}, es edges) *Node {
 	if n.key.stringNeedSplit(k, t) { // split
 		return n.splitNew(t, Key(k), v, es)
 	}
@@ -201,7 +201,7 @@ func (n *Node) putString(t *txn, k string, v interface{}, es edges) *Node {
 }
 
 // set updates the value and merges in the provided edges.
-func (n *Node) set(t *txn, v interface{}, e edges) *Node {
+func (n *Node) set(t *Txn, v interface{}, e edges) *Node {
 	e, eq := n.edges.merge(t, e)
 	if eq {
 		if reflect.DeepEqual(n.value, v) {
@@ -217,7 +217,7 @@ func (n *Node) set(t *txn, v interface{}, e edges) *Node {
 }
 
 // setEdges makes a copy of the node with a different set of edges.
-func (n *Node) setEdges(t *txn, es edges) *Node {
+func (n *Node) setEdges(t *Txn, es edges) *Node {
 	if t.isMutable(n) {
 		n.edges = es
 		return n
@@ -225,7 +225,7 @@ func (n *Node) setEdges(t *txn, es edges) *Node {
 	return t.newNode(n.key, n.value, es)
 }
 
-func (a *Node) split(t *txn, b *Node) *Node {
+func (a *Node) split(t *Txn, b *Node) *Node {
 	if b.key[t.depth] < a.key[t.depth] {
 		a, b = b, a
 	}
@@ -235,7 +235,7 @@ func (a *Node) split(t *txn, b *Node) *Node {
 	return t.newNode(a.key[:t.depth], nil, es)
 }
 
-func (n *Node) splitNew(t *txn, k Key, v interface{}, es edges) *Node {
+func (n *Node) splitNew(t *Txn, k Key, v interface{}, es edges) *Node {
 	t.preallocNodes(2)
 	return n.split(t, t.newNode(k, v, es))
 }

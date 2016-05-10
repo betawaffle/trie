@@ -2,7 +2,7 @@ package trie
 
 import "fmt"
 
-type txn struct {
+type Txn struct {
 	root  *Node
 	depth int
 	mut   map[*Node]bool
@@ -13,7 +13,7 @@ type txn struct {
 	newNodes int
 }
 
-func (t *txn) PrintHistogram() {
+func (t *Txn) PrintHistogram() {
 	// fmt.Printf("mutable nodes: %d, new nodes: %d\n", len(t.mut), t.newNodes)
 
 	h := t.root.Histogram()
@@ -26,42 +26,34 @@ func (t *txn) PrintHistogram() {
 	}
 }
 
-func newTxn(n int) *txn {
-	return &txn{
-		mut:   make(map[*Node]bool, n),
-		nodes: make([]Node, n),
-		edges: make([]*Node, n),
-	}
-}
-
-func (t *txn) Prealloc(n int) {
+func (t *Txn) Prealloc(n int) {
 	t.mut = make(map[*Node]bool, n)
 	t.nodes = make([]Node, n)
 	t.edges = make([]*Node, n-1)
 }
 
-func (t *txn) Commit() *Node {
+func (t *Txn) Commit() *Node {
 	t.mut = nil
 	t.nodes = nil
 	t.edges = nil
 	return t.root
 }
 
-func (t *txn) Delete(k []byte) {
+func (t *Txn) Delete(k []byte) {
 	if t.root != nil {
 		t.depth = 0
 		t.root = t.root.delete(t, k)
 	}
 }
 
-func (t *txn) DeleteString(k string) {
+func (t *Txn) DeleteString(k string) {
 	if t.root != nil {
 		t.depth = 0
 		t.root = t.root.deleteString(t, k)
 	}
 }
 
-func (t *txn) Merge(n *Node) {
+func (t *Txn) Merge(n *Node) {
 	if n == nil {
 		return
 	}
@@ -73,7 +65,7 @@ func (t *txn) Merge(n *Node) {
 	t.root = t.root.merge(t, n)
 }
 
-func (t *txn) Put(k []byte, v interface{}) {
+func (t *Txn) Put(k []byte, v interface{}) {
 	if t.root != nil {
 		t.depth = 0
 		t.root = t.root.put(t, k, v, nil)
@@ -82,7 +74,7 @@ func (t *txn) Put(k []byte, v interface{}) {
 	t.root = t.newNode(k, v, nil)
 }
 
-func (t *txn) PutString(k string, v interface{}) {
+func (t *Txn) PutString(k string, v interface{}) {
 	if t.root != nil {
 		t.depth = 0
 		t.root = t.root.putString(t, k, v, nil)
@@ -91,20 +83,20 @@ func (t *txn) PutString(k string, v interface{}) {
 	t.root = t.newNode(Key(k), v, nil)
 }
 
-func (t *txn) preallocNodes(n int) {
+func (t *Txn) preallocNodes(n int) {
 	if len(t.nodes) < n {
 		t.nodes = make([]Node, n)
 	}
 }
 
-func (t *txn) isMutable(n *Node) bool {
+func (t *Txn) isMutable(n *Node) bool {
 	if t.mut == nil {
 		return false
 	}
 	return t.mut[n]
 }
 
-func (t *txn) newNode(k Key, v interface{}, es edges) (n *Node) {
+func (t *Txn) newNode(k Key, v interface{}, es edges) (n *Node) {
 	// if t.nodes == nil {
 	// 	t.nodes = make([]Node, 8)
 	// }
@@ -129,7 +121,7 @@ func (t *txn) newNode(k Key, v interface{}, es edges) (n *Node) {
 	return
 }
 
-func (t *txn) newEdges(n int) (es edges) {
+func (t *Txn) newEdges(n int) (es edges) {
 	if len(t.edges) < 10 {
 		t.edges = make([]*Node, 256)
 	}

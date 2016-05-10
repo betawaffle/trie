@@ -50,7 +50,7 @@ func (k Key) commonStringLen(s string, depth int) (n int, short bool) {
 	return len(k), short
 }
 
-func (k Key) bytesNeedSplit(b []byte, t *txn) (short bool) {
+func (k Key) bytesNeedSplit(b []byte, t *Txn) (short bool) {
 	if len(b) < len(k) {
 		k, short = k[:len(b)], true
 	}
@@ -66,7 +66,7 @@ func (k Key) bytesNeedSplit(b []byte, t *txn) (short bool) {
 	return short
 }
 
-func (k Key) stringNeedSplit(s string, t *txn) (short bool) {
+func (k Key) stringNeedSplit(s string, t *Txn) (short bool) {
 	if len(s) < len(k) {
 		k, short = k[:len(s)], true
 	}

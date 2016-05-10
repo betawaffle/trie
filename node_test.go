@@ -234,7 +234,7 @@ func buildMap(keys [][]byte) map[string]int {
 }
 
 func buildTree(keys [][]byte) *Node {
-	tx := new(txn)
+	tx := new(Txn)
 	tx.Prealloc(len(keys) + 300)
 	// newTxn(len(keys) + 300)
 	for _, k := range keys {
