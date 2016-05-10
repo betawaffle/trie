@@ -65,11 +65,8 @@ func (n *Node) Histogram() map[uint8]int {
 	return h
 }
 
-func (n *Node) histogram(h map[uint8]int) {
-	h[uint8(len(n.edges))]++
-	for _, nd := range n.edges {
-		nd.histogram(h)
-	}
+func (n *Node) Key() []byte {
+	return n.key
 }
 
 func (a *Node) Merge(b *Node) *Node {
@@ -100,13 +97,22 @@ func (n *Node) String() string {
 	return fmt.Sprintf("{%q:%v}", n.key, n.edges)
 }
 
+func (n *Node) Value() interface{} {
+	return n.value
+}
+
 func (n *Node) Walk(fn func(*Node) bool) {
-	if !fn(n) {
+	if n == nil {
 		return
 	}
-	for _, nd := range n.edges {
-		nd.Walk(fn)
+	n.walk(fn)
+}
+
+func (n *Node) WalkChan(ch chan<- *Node) {
+	if n != nil {
+		n.walkChan(ch)
 	}
+	close(ch)
 }
 
 func (n *Node) delete(t *Txn, k []byte) *Node {
@@ -153,6 +159,13 @@ func (n *Node) deleteValue(t *Txn) *Node {
 		n.value = nil
 	}
 	return n
+}
+
+func (n *Node) histogram(h map[uint8]int) {
+	h[uint8(len(n.edges))]++
+	for _, nd := range n.edges {
+		nd.histogram(h)
+	}
 }
 
 // merge is like put, but takes an existing node, which can save allocations.
@@ -238,4 +251,22 @@ func (a *Node) split(t *Txn, b *Node) *Node {
 func (n *Node) splitNew(t *Txn, k Key, v interface{}, es edges) *Node {
 	t.preallocNodes(2)
 	return n.split(t, t.newNode(k, v, es))
+}
+
+func (n *Node) walk(fn func(*Node) bool) {
+	if n.value != nil && !fn(n) {
+		return
+	}
+	for _, nd := range n.edges {
+		nd.Walk(fn)
+	}
+}
+
+func (n *Node) walkChan(ch chan<- *Node) {
+	if n.value != nil {
+		ch <- n
+	}
+	for _, nd := range n.edges {
+		nd.walkChan(ch)
+	}
 }
