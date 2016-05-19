@@ -1,6 +1,7 @@
 package trie
 
 import (
+	"bytes"
 	"crypto/rand"
 	"testing"
 	"unsafe"
@@ -33,6 +34,24 @@ func TestPut(t *testing.T) {
 	if e := m.edges[0]; e != n {
 		t.Errorf("expected first node to be reused")
 	}
+}
+
+func TestGet(t *testing.T) {
+	n := &Node{key: k1, value: []byte("12345")}
+	m := n.Put(k2, []byte("2"))
+
+	if v := m.Get(k2); !bytes.Equal(v.([]byte), []byte("2")) {
+		t.Fatalf(`expected "2", got %q`, v)
+	}
+}
+
+func TestMerge(t *testing.T) {
+	n := &Node{key: k1, value: []byte("12345")}
+	m := n.Put(k2, []byte("2"))
+	tx := new(Txn)
+	tx.Put(k1, []byte("12345"))
+	tx.Put(k2, []byte("2"))
+	tx.Merge(m)
 }
 
 // func ExampleReport() {

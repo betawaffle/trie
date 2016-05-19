@@ -179,7 +179,8 @@ func (ns *nodeSet) merge(t *Txn, es edges) {
 				ns.num--
 				*slot = n
 			} else {
-				*slot = old.merge(t, n)
+				depth := t.depth
+				*slot, t.depth = old.merge(t, n), depth
 			}
 		} else if n != nil {
 			*slot = n
