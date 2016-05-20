@@ -49,14 +49,14 @@ func (n *Node) Delete(k []byte) *Node {
 	if n == nil {
 		return nil
 	}
-	return n.delete(&Txn{root: n}, k)
+	return n.delete(&Txn{root: n}, 0, k)
 }
 
 func (n *Node) DeleteString(k string) *Node {
 	if n == nil {
 		return nil
 	}
-	return n.deleteString(&Txn{root: n}, k)
+	return n.deleteString(&Txn{root: n}, 0, k)
 }
 
 func (n *Node) Histogram() map[uint8]int {
@@ -76,21 +76,21 @@ func (a *Node) Merge(b *Node) *Node {
 	if b == nil {
 		return a
 	}
-	return a.merge(&Txn{root: a}, b)
+	return a.merge(&Txn{root: a}, 0, b)
 }
 
 func (n *Node) Put(k []byte, v interface{}) *Node {
 	if n == nil {
 		return &Node{key: k, value: v}
 	}
-	return n.put(&Txn{root: n}, k, v, nil)
+	return n.put(&Txn{root: n}, 0, k, v, nil)
 }
 
 func (n *Node) PutString(k string, v interface{}) *Node {
 	if n == nil {
 		return &Node{key: Key(k), value: v}
 	}
-	return n.putString(&Txn{root: n}, k, v, nil)
+	return n.putString(&Txn{root: n}, 0, k, v, nil)
 }
 
 func (n *Node) String() string {
@@ -115,28 +115,30 @@ func (n *Node) WalkChan(ch chan<- *Node) {
 	close(ch)
 }
 
-func (n *Node) delete(t *Txn, k []byte) *Node {
-	if n.key.bytesNeedSplit(k, t) { // not found
+func (n *Node) delete(t *Txn, depth int, k []byte) *Node {
+	i, ok := n.key.commonBytesLen(k, depth)
+	if ok { // not found
 		return n
 	}
-	if t.depth == len(k) { // exact match
+	if i == len(k) { // exact match
 		return n.deleteValue(t)
 	}
-	es, modified := n.edges.delete(t, k)
+	es, modified := n.edges.delete(t, i, k)
 	if !modified {
 		return n
 	}
 	return n.setEdges(t, es)
 }
 
-func (n *Node) deleteString(t *Txn, k string) *Node {
-	if n.key.stringNeedSplit(k, t) { // not found
+func (n *Node) deleteString(t *Txn, depth int, k string) *Node {
+	i, ok := n.key.commonStringLen(k, depth)
+	if ok { // not found
 		return n
 	}
-	if t.depth == len(k) { // exact match
+	if i == len(k) { // exact match
 		return n.deleteValue(t)
 	}
-	es, modified := n.edges.deleteString(t, k)
+	es, modified := n.edges.deleteString(t, i, k)
 	if !modified {
 		return n
 	}
@@ -169,14 +171,18 @@ func (n *Node) histogram(h map[uint8]int) {
 }
 
 // merge is like put, but takes an existing node, which can save allocations.
-func (a *Node) merge(t *Txn, b *Node) *Node {
-	if a.key.bytesNeedSplit(b.key, t) { // split
-		return a.split(t, b)
+func (a *Node) merge(t *Txn, depth int, b *Node) *Node {
+	i, ok := a.key.commonBytesLen(b.key, depth)
+	if ok { // split
+		if len(b.key) != i {
+			return a.split(t, i, b)
+		}
+		a, b = b, a
 	}
-	if t.depth == len(b.key) { // exact match
+	if i == len(b.key) { // exact match
 		return a.set(t, b.value, b.edges)
 	}
-	es, modified := a.edges.add(t, b)
+	es, modified := a.edges.add(t, i, b)
 	if !modified {
 		return a
 	}
@@ -184,14 +190,15 @@ func (a *Node) merge(t *Txn, b *Node) *Node {
 }
 
 // put sets the value (and merges the edges) under a given key.
-func (n *Node) put(t *Txn, k []byte, v interface{}, es edges) *Node {
-	if n.key.bytesNeedSplit(k, t) { // split
-		return n.splitNew(t, k, v, es)
+func (n *Node) put(t *Txn, depth int, k []byte, v interface{}, es edges) *Node {
+	i, ok := n.key.commonBytesLen(k, depth)
+	if ok { // split
+		return n.splitNew(t, i, k, v, es)
 	}
-	if t.depth == len(k) { // exact match
+	if i == len(k) { // exact match
 		return n.set(t, v, es)
 	}
-	es, modified := n.edges.put(t, k, v, es)
+	es, modified := n.edges.put(t, i, k, v, es)
 	if !modified {
 		return n
 	}
@@ -199,14 +206,15 @@ func (n *Node) put(t *Txn, k []byte, v interface{}, es edges) *Node {
 }
 
 // putString is like put, but takes a string key.
-func (n *Node) putString(t *Txn, k string, v interface{}, es edges) *Node {
-	if n.key.stringNeedSplit(k, t) { // split
-		return n.splitNew(t, Key(k), v, es)
+func (n *Node) putString(t *Txn, depth int, k string, v interface{}, es edges) *Node {
+	i, ok := n.key.commonStringLen(k, depth)
+	if ok { // split
+		return n.splitNew(t, i, Key(k), v, es)
 	}
-	if t.depth == len(k) { // exact match
+	if i == len(k) { // exact match
 		return n.set(t, v, es)
 	}
-	es, modified := n.edges.putString(t, k, v, es)
+	es, modified := n.edges.putString(t, i, k, v, es)
 	if !modified {
 		return n
 	}
@@ -215,7 +223,7 @@ func (n *Node) putString(t *Txn, k string, v interface{}, es edges) *Node {
 
 // set updates the value and merges in the provided edges.
 func (n *Node) set(t *Txn, v interface{}, e edges) *Node {
-	e, eq := n.edges.merge(t, e)
+	e, eq := n.edges.merge(t, len(n.key), e)
 	if eq {
 		if reflect.DeepEqual(n.value, v) {
 			return n
@@ -238,19 +246,26 @@ func (n *Node) setEdges(t *Txn, es edges) *Node {
 	return t.newNode(n.key, n.value, es)
 }
 
-func (a *Node) split(t *Txn, b *Node) *Node {
-	if b.key[t.depth] < a.key[t.depth] {
+func (a *Node) split(t *Txn, i int, b *Node) *Node {
+	if len(b.key) == i {
+		panic(fmt.Errorf("merge: bad split %q at %d into %q -> [%q %q]", a.key, i, a.key[:i], a.key[i:], b.key[i:]))
+	}
+	if b.key[i] < a.key[i] {
 		a, b = b, a
 	}
 	es := t.newEdges(2)
 	es[0] = a
 	es[1] = b
-	return t.newNode(a.key[:t.depth], nil, es)
+	return t.newNode(a.key[:i], nil, es)
 }
 
-func (n *Node) splitNew(t *Txn, k Key, v interface{}, es edges) *Node {
+func (n *Node) splitNew(t *Txn, depth int, k Key, v interface{}, es edges) *Node {
 	t.preallocNodes(2)
-	return n.split(t, t.newNode(k, v, es))
+	b := t.newNode(k, v, es)
+	if len(k) != depth {
+		return n.split(t, depth, b)
+	}
+	return n.merge(t, depth, b)
 }
 
 func (n *Node) walk(fn func(*Node) bool) {

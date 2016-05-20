@@ -45,13 +45,61 @@ func TestGet(t *testing.T) {
 	}
 }
 
+func TestDelete(t *testing.T) {
+	n := &Node{key: k1, value: []byte("12345")}
+	m := n.Put(k2, []byte("2")).Delete(k1)
+
+	if v := m.Get(k1); v != nil {
+		t.Fatalf(`expected nil, got %q`, v)
+	}
+	if v := m.Get(k2); !bytes.Equal(v.([]byte), []byte("2")) {
+		t.Fatalf(`expected "2", got %q`, v)
+	}
+}
+
 func TestMerge(t *testing.T) {
 	n := &Node{key: k1, value: []byte("12345")}
 	m := n.Put(k2, []byte("2"))
+
 	tx := new(Txn)
 	tx.Put(k1, []byte("12345"))
 	tx.Put(k2, []byte("2"))
 	tx.Merge(m)
+
+	o := tx.Commit()
+
+	if v := o.Get(k1); !bytes.Equal(v.([]byte), []byte("12345")) {
+		t.Fatalf(`expected "12345", got %q`, v)
+	}
+	if v := o.Get(k2); !bytes.Equal(v.([]byte), []byte("2")) {
+		t.Fatalf(`expected "2", got %q`, v)
+	}
+}
+
+func TestMerge2(t *testing.T) {
+	n := &Node{key: k1, value: []byte("12345")}
+	m := n.Put(k2, []byte("2"))
+	o := n.Merge(m)
+
+	if v := o.Get(k1); !bytes.Equal(v.([]byte), []byte("12345")) {
+		t.Fatalf(`expected "12345", got %q`, v)
+	}
+	if v := o.Get(k2); !bytes.Equal(v.([]byte), []byte("2")) {
+		t.Fatalf(`expected "2", got %q`, v)
+	}
+}
+
+func TestMerge3(t *testing.T) {
+	n := &Node{key: k1, value: []byte("12345")}
+	m := n.Put(k3, []byte("2"))
+	o := n.Merge(m)
+
+	if v := o.Get(k1); !bytes.Equal(v.([]byte), []byte("12345")) {
+		t.Fatalf(`expected "12345", got %q`, v)
+	}
+	if v := o.Get(k3); !bytes.Equal(v.([]byte), []byte("2")) {
+		t.Fatalf(`expected "2", got %q`, v)
+	}
 }
 
 // func ExampleReport() {

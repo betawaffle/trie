@@ -4,12 +4,10 @@ import "sort"
 
 type edges []*Node
 
-func (es edges) add(t *Txn, node *Node) (edges, bool) {
-	i, old := es.get(node.key[t.depth], t.depth)
+func (es edges) add(t *Txn, depth int, node *Node) (edges, bool) {
+	i, old := es.get(node.key[depth], depth)
 	if old != nil {
-		t.depth++
-
-		if n := old.merge(t, node); n != old {
+		if n := old.merge(t, depth+1, node); n != old {
 			return es.insert(t, i, 1, n)
 		}
 		return es, false
@@ -27,12 +25,10 @@ func (es edges) cut(t *Txn, i, n int) (edges, bool) {
 	return cp, true
 }
 
-func (es edges) delete(t *Txn, k []byte) (edges, bool) {
-	i, old := es.get(k[t.depth], t.depth)
+func (es edges) delete(t *Txn, depth int, k []byte) (edges, bool) {
+	i, old := es.get(k[depth], depth)
 	if old != nil {
-		t.depth++
-
-		if n := old.delete(t, k); n == nil {
+		if n := old.delete(t, depth+1, k); n == nil {
 			return es.cut(t, i, 1)
 		} else if n != old {
 			return es.insert(t, i, 1, n)
@@ -41,12 +37,10 @@ func (es edges) delete(t *Txn, k []byte) (edges, bool) {
 	return es, false
 }
 
-func (es edges) deleteString(t *Txn, k string) (edges, bool) {
-	i, old := es.get(k[t.depth], t.depth)
+func (es edges) deleteString(t *Txn, depth int, k string) (edges, bool) {
+	i, old := es.get(k[depth], depth)
 	if old != nil {
-		t.depth++
-
-		if n := old.deleteString(t, k); n == nil {
+		if n := old.deleteString(t, depth+1, k); n == nil {
 			return es.cut(t, i, 1)
 		} else if n != old {
 			return es.insert(t, i, 1, n)
@@ -76,24 +70,22 @@ func (es edges) insert(t *Txn, i, skip int, node *Node) (edges, bool) {
 	return cp, true
 }
 
-func (a edges) merge(t *Txn, b edges) (edges, bool) {
+func (a edges) merge(t *Txn, depth int, b edges) (edges, bool) {
 	if len(b) == 0 {
 		return a, true
 	}
 	if len(a) == 0 {
 		return b, false
 	}
-	ns := getNodeSet(t.depth, a)
+	ns := getNodeSet(depth, a)
 	ns.merge(t, b)
 	return ns.edges(), false
 }
 
-func (a edges) put(t *Txn, k []byte, v interface{}, b edges) (edges, bool) {
-	i, old := a.get(k[t.depth], t.depth)
+func (a edges) put(t *Txn, depth int, k []byte, v interface{}, b edges) (edges, bool) {
+	i, old := a.get(k[depth], depth)
 	if old != nil {
-		t.depth++
-
-		if n := old.put(t, k, v, b); n != old {
+		if n := old.put(t, depth+1, k, v, b); n != old {
 			return a.insert(t, i, 1, n)
 		}
 		return a, false
@@ -101,12 +93,10 @@ func (a edges) put(t *Txn, k []byte, v interface{}, b edges) (edges, bool) {
 	return a.insert(t, i, 0, t.newNode(k, v, b))
 }
 
-func (a edges) putString(t *Txn, k string, v interface{}, b edges) (edges, bool) {
-	i, old := a.get(k[t.depth], t.depth)
+func (a edges) putString(t *Txn, depth int, k string, v interface{}, b edges) (edges, bool) {
+	i, old := a.get(k[depth], depth)
 	if old != nil {
-		t.depth++
-
-		if n := old.putString(t, k, v, b); n != old {
+		if n := old.putString(t, depth+1, k, v, b); n != old {
 			return a.insert(t, i, 1, n)
 		}
 		return a, false
@@ -133,6 +123,7 @@ var nodeSets = make(chan *nodeSet, 10)
 
 type nodeSet struct {
 	nodes [256]*Node
+	depth int
 	num   int
 }
 
@@ -145,6 +136,7 @@ func getNodeSet(depth int, es edges) (ns *nodeSet) {
 		ns = new(nodeSet)
 	}
 	ns.num = len(es)
+	ns.depth = depth
 
 	for _, n := range es {
 		ns.nodes[n.key[depth]] = n
@@ -172,15 +164,14 @@ func (ns *nodeSet) edges() edges {
 
 func (ns *nodeSet) merge(t *Txn, es edges) {
 	for _, n := range es {
-		slot := &ns.nodes[n.key[t.depth]]
+		slot := &ns.nodes[n.key[ns.depth]]
 
 		if old := *slot; old != nil {
 			if n == nil {
 				ns.num--
 				*slot = n
 			} else {
-				depth := t.depth
-				*slot, t.depth = old.merge(t, n), depth
+				*slot = old.merge(t, ns.depth, n)
 			}
 		} else if n != nil {
 			*slot = n
