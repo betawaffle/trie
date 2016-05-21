@@ -4,11 +4,18 @@ import "sort"
 
 type edges []*Node
 
-func (es edges) add(t *Txn, depth int, node *Node) (edges, bool) {
+func (es edges) add(t *Txn, depth int, node *Node, reverse bool) (edges, bool) {
 	i, old := es.get(node.key[depth], depth)
 	if old != nil {
-		if n := old.merge(t, depth+1, node); n != old {
-			return es.insert(t, i, 1, n)
+		depth++
+
+		if reverse {
+			node = node.merge(t, depth, old)
+		} else {
+			node = old.merge(t, depth, node)
+		}
+		if node != old {
+			return es.insert(t, i, 1, node)
 		}
 		return es, false
 	}
@@ -77,7 +84,13 @@ func (a edges) merge(t *Txn, depth int, b edges) (edges, bool) {
 	if len(a) == 0 {
 		return b, false
 	}
-	ns := getNodeSet(depth, a)
+	ns := &nodeSet{
+		num:   len(a),
+		depth: depth,
+	}
+	for _, n := range a {
+		ns.nodes[n.key[depth]] = n
+	}
 	ns.merge(t, b)
 	return ns.edges(), false
 }
@@ -119,31 +132,10 @@ func (es edges) valid() bool {
 	return true
 }
 
-var nodeSets = make(chan *nodeSet, 10)
-
 type nodeSet struct {
 	nodes [256]*Node
 	depth int
 	num   int
-}
-
-func getNodeSet(depth int, es edges) (ns *nodeSet) {
-	select {
-	case ns = <-nodeSets:
-	default:
-	}
-	if ns == nil {
-		ns = new(nodeSet)
-	}
-	ns.num = len(es)
-	ns.depth = depth
-
-	for _, n := range es {
-		ns.nodes[n.key[depth]] = n
-	}
-
-	// panic("new nodeSet")
-	return ns
 }
 
 func (ns *nodeSet) edges() edges {
@@ -154,27 +146,26 @@ func (ns *nodeSet) edges() edges {
 		}
 		es = append(es, n)
 	}
-	ns.nodes = [256]*Node{}
-	select {
-	case nodeSets <- ns:
-	default:
-	}
+	// ns.nodes = [256]*Node{}
+	// select {
+	// case nodeSets <- ns:
+	// default:
+	// }
 	return es
 }
 
 func (ns *nodeSet) merge(t *Txn, es edges) {
-	for _, n := range es {
-		slot := &ns.nodes[n.key[ns.depth]]
-
-		if old := *slot; old != nil {
-			if n == nil {
+	for _, b := range es {
+		slot := &ns.nodes[b.key[ns.depth]]
+		if a := *slot; a != nil {
+			if b == nil {
 				ns.num--
-				*slot = n
+				*slot = b
 			} else {
-				*slot = old.merge(t, ns.depth, n)
+				*slot = a.merge(t, ns.depth, b)
 			}
-		} else if n != nil {
-			*slot = n
+		} else if b != nil {
+			*slot = b
 			ns.num++
 		}
 	}

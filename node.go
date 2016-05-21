@@ -174,15 +174,12 @@ func (n *Node) histogram(h map[uint8]int) {
 func (a *Node) merge(t *Txn, depth int, b *Node) *Node {
 	i, ok := a.key.commonBytesLen(b.key, depth)
 	if ok { // split
-		if len(b.key) != i {
-			return a.split(t, i, b)
-		}
-		a, b = b, a
+		return a.split(t, i, b)
 	}
 	if i == len(b.key) { // exact match
 		return a.set(t, b.value, b.edges)
 	}
-	es, modified := a.edges.add(t, i, b)
+	es, modified := a.edges.add(t, i, b, false)
 	if !modified {
 		return a
 	}
@@ -248,7 +245,11 @@ func (n *Node) setEdges(t *Txn, es edges) *Node {
 
 func (a *Node) split(t *Txn, i int, b *Node) *Node {
 	if len(b.key) == i {
-		panic(fmt.Errorf("merge: bad split %q at %d into %q -> [%q %q]", a.key, i, a.key[:i], a.key[i:], b.key[i:]))
+		e, modified := b.edges.add(t, i, a, true)
+		if modified {
+			return b.setEdges(t, e)
+		}
+		return b
 	}
 	if b.key[i] < a.key[i] {
 		a, b = b, a
@@ -261,11 +262,7 @@ func (a *Node) split(t *Txn, i int, b *Node) *Node {
 
 func (n *Node) splitNew(t *Txn, depth int, k Key, v interface{}, es edges) *Node {
 	t.preallocNodes(2)
-	b := t.newNode(k, v, es)
-	if len(k) != depth {
-		return n.split(t, depth, b)
-	}
-	return n.merge(t, depth, b)
+	return n.split(t, depth, t.newNode(k, v, es))
 }
 
 func (n *Node) walk(fn func(*Node) bool) {
