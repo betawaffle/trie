@@ -4,17 +4,12 @@ import "sort"
 
 type edges []*Node
 
+// add inserts the given node into into the target, returning the new edges and
+// true if a new slice was allocated.
 func (es edges) add(t *Txn, depth int, node *Node, reverse bool) (edges, bool) {
 	i, old := es.get(node.key[depth], depth)
 	if old != nil {
-		depth++
-
-		if reverse {
-			node = node.merge(t, depth, old)
-		} else {
-			node = old.merge(t, depth, node)
-		}
-		if node != old {
+		if node, _ := mergeNodes(t, depth+1, old, node, reverse); node != old {
 			return es.insert(t, i, 1, node)
 		}
 		return es, false
@@ -22,13 +17,15 @@ func (es edges) add(t *Txn, depth int, node *Node, reverse bool) (edges, bool) {
 	return es.insert(t, i, 0, node)
 }
 
+// cut removes n nodes starting at i from the target, returning true if a new
+// slice was allocated (currently always true).
 func (es edges) cut(t *Txn, i, n int) (edges, bool) {
-	cp := t.newEdges(len(es) - n)
+	cp := make(edges, len(es)-n)
 	copy(cp, es[:i])
 	copy(cp[i:], es[i+n:])
-	// if !cp.valid() {
-	// 	panic("invalid edges!")
-	// }
+	if debugEnabled && !cp.valid() {
+		panic("invalid edges!")
+	}
 	return cp, true
 }
 
@@ -66,33 +63,17 @@ func (es edges) get(label byte, depth int) (int, *Node) {
 	return i, nil
 }
 
+// insert replaces skip nodes with node, starting at i. It returns the new
+// edges and true if a new slice was allocated (currently always true).
 func (es edges) insert(t *Txn, i, skip int, node *Node) (edges, bool) {
-	// if len(node.key) == 0 {
-	// 	panic("key too short")
-	// }
-	cp := t.newEdges(len(es) + 1 - skip)
+	if debugEnabled && len(node.key) == 0 {
+		panic("key too short")
+	}
+	cp := make(edges, len(es)+1-skip)
 	copy(cp, es[:i])
 	cp[i] = node
 	copy(cp[i+1:], es[i+skip:])
 	return cp, true
-}
-
-func (a edges) merge(t *Txn, depth int, b edges) (edges, bool) {
-	if len(b) == 0 {
-		return a, true
-	}
-	if len(a) == 0 {
-		return b, false
-	}
-	ns := &nodeSet{
-		num:   len(a),
-		depth: depth,
-	}
-	for _, n := range a {
-		ns.nodes[n.key[depth]] = n
-	}
-	ns.merge(t, b)
-	return ns.edges(), false
 }
 
 func (a edges) put(t *Txn, depth int, k []byte, v interface{}, b edges) (edges, bool) {
@@ -121,52 +102,4 @@ func (es edges) search(label byte, depth int) (i, n int) {
 	n = len(es)
 	i = sort.Search(n, func(idx int) bool { return es[idx].key[depth] >= label })
 	return
-}
-
-func (es edges) valid() bool {
-	for _, e := range es {
-		if e == nil {
-			return false
-		}
-	}
-	return true
-}
-
-type nodeSet struct {
-	nodes [256]*Node
-	depth int
-	num   int
-}
-
-func (ns *nodeSet) edges() edges {
-	es := make(edges, 0, ns.num)
-	for _, n := range ns.nodes {
-		if n == nil {
-			continue
-		}
-		es = append(es, n)
-	}
-	// ns.nodes = [256]*Node{}
-	// select {
-	// case nodeSets <- ns:
-	// default:
-	// }
-	return es
-}
-
-func (ns *nodeSet) merge(t *Txn, es edges) {
-	for _, b := range es {
-		slot := &ns.nodes[b.key[ns.depth]]
-		if a := *slot; a != nil {
-			if b == nil {
-				ns.num--
-				*slot = b
-			} else {
-				*slot = a.merge(t, ns.depth, b)
-			}
-		} else if b != nil {
-			*slot = b
-			ns.num++
-		}
-	}
 }
